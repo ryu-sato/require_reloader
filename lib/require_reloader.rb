@@ -53,8 +53,40 @@ module RequireReloader
             helper.remove_gem_module_if_defined(gem)
           end
           $".delete_if {|s| s.include?(gem)}
-          require gem
+          RequireReloader.require gem
           opts[:callback].call(gem) if opts[:callback]
+        end
+      end
+    end
+
+    REQUIRE_ERRORS = [
+      /^no such file to load -- (.+)$/i,
+      /^Missing \w+ (?:file\s*)?([^\s]+.rb)$/i,
+      /^Missing API definition file in (.+)$/i,
+      /^cannot load such file -- (.+)$/i,
+      /^dlopen\([^)]*\): Library not loaded: (.+)$/i,
+    ].freeze
+
+    def require(gem_name)
+      begin
+        begin
+          Kernel.require gem_name
+        rescue RuntimeError => e
+          raise e if e.is_a?(LoadError)
+          raise e, "There was an error while trying to load the gem '#{gem_name}'."
+        end
+      rescue LoadError => e
+        REQUIRE_ERRORS.find {|r| r =~ e.message }
+        raise if $1 != gem_name
+
+        if gem_name.include?('-')
+          begin
+            namespaced_gem_name = gem_name.tr("-", "/")
+            Kernel.require namespaced_gem_name
+          rescue LoadError => e
+            REQUIRE_ERRORS.find {|r| r =~ e.message }
+            raise if $1 != namespaced_gem_name
+          end
         end
       end
     end
